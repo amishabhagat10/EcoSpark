@@ -50,7 +50,7 @@ const Dashboard = () => {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold text-foreground mb-2">
-            Welcome back!
+            Welcome back! {displayName}
           </h1>
           <p className="text-lg text-muted-foreground">
             Ready to make a positive impact today?

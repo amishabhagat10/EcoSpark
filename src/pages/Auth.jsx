@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom';
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
+  const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -42,6 +43,7 @@ const Auth = () => {
 
     try {
       if (isLogin) {
+        // LOGIN
         const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
@@ -54,6 +56,17 @@ const Auth = () => {
         });
         navigate('/');
       } else {
+        // SIGNUP
+        if (!displayName.trim()) {
+          toast({
+            title: "Error",
+            description: "Display Name is required",
+            variant: "destructive"
+          });
+          setLoading(false);
+          return;
+        }
+
         if (password !== confirmPassword) {
           toast({
             title: "Error",
@@ -81,7 +94,13 @@ const Auth = () => {
 
         if (error) throw error;
 
-        if (data?.session) {
+        if (data?.user) {
+          // Save displayName in profiles table
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .insert([{ id: data.user.id, display_name: displayName, email }]);
+          if (profileError) throw profileError;
+
           toast({
             title: "Welcome! 🌱",
             description: "Your account has been created successfully.",
@@ -126,6 +145,26 @@ const Auth = () => {
 
           {/* Email/Password Form */}
           <form onSubmit={handleAuth} className="space-y-4">
+            {/* DISPLAY NAME - only for signup */}
+            {!isLogin && (
+              <div>
+                <label className="text-sm font-medium text-foreground mb-2 block">
+                  Display Name
+                </label>
+                <div className="relative">
+                  <Input
+                    type="text"
+                    placeholder="John Doe"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    className="pl-3"
+                    required
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* EMAIL */}
             <div>
               <label className="text-sm font-medium text-foreground mb-2 block">
                 Email
@@ -143,6 +182,7 @@ const Auth = () => {
               </div>
             </div>
 
+            {/* PASSWORD */}
             <div>
               <label className="text-sm font-medium text-foreground mb-2 block">
                 Password
@@ -167,6 +207,7 @@ const Auth = () => {
               </div>
             </div>
 
+            {/* CONFIRM PASSWORD - only for signup */}
             {!isLogin && (
               <div>
                 <label className="text-sm font-medium text-foreground mb-2 block">
