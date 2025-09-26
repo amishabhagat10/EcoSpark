@@ -21,66 +21,119 @@ const Community = () => {
 
   const leaderboardFilters = ['All Time', 'This Month', 'This Week'];
 
+  const getStartOfWeek = () => {
+    const now = new Date();
+    const day = now.getDay(); // Sunday = 0
+    const diff = now.getDate() - day; // Go back to Sunday
+    const start = new Date(now.setDate(diff));
+    start.setHours(0, 0, 0, 0);
+    return start;
+  };
+
+  const getStartOfMonth = () => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  };
+
   const fetchCommunityData = async () => {
     try {
       setLoading(true);
-      
-      // Fetch community stats
+
+      // --- Community Stats ---
       const { data: statsData } = await supabase
         .from('user_stats')
-        .select('total_co2_saved, total_habits_logged, impact_points');
+        .select('total_co2_saved, total_habits_logged');
 
       if (statsData) {
         const totalCo2 = statsData.reduce((sum, stat) => sum + parseFloat(stat.total_co2_saved || 0), 0);
         const totalActions = statsData.reduce((sum, stat) => sum + (stat.total_habits_logged || 0), 0);
         const totalMembers = statsData.length;
-        
+
         setCommunityStats({
           totalMembers,
           totalCo2Saved: totalCo2,
           totalActions,
-          totalMiles: Math.floor(totalCo2 * 5) // Approximate miles of car emissions avoided
+          totalMiles: Math.floor(totalCo2 / 0.4) // ~0.4kg CO₂ per mile
         });
       }
 
-      // Fetch leaderboard
-      const { data: leaderboardData } = await supabase
-        .from('user_stats')
-        .select(`
-          *,
-          profiles!inner (
-            display_name,
-            email
-          )
-        `)
-        .order('total_co2_saved', { ascending: false })
-        .limit(10);
+      // --- Leaderboard ---
+      let leaderboardData = [];
 
-      if (leaderboardData) {
-        setLeaderboard(leaderboardData.map((item, index) => ({
-          rank: index + 1,
-          name: item.profiles.display_name || item.profiles.email?.split('@')[0] || 'Anonymous',
-          co2Saved: parseFloat(item.total_co2_saved || 0),
-          points: item.impact_points || 0,
-          streak: item.current_streak || 0,
-          isCurrentUser: item.user_id === user?.id
-        })));
+      if (leaderboardFilter === 'This Week') {
+        const weekStart = getStartOfWeek();
+
+        const { data: weeklyData } = await supabase
+          .from('user_habits')
+          .select(`user_id, co2_saved, profiles!inner ( display_name, email )`)
+          .gte('logged_at', weekStart.toISOString());
+
+        if (weeklyData) {
+          const weeklyStats = weeklyData.reduce((acc, habit) => {
+            if (!acc[habit.user_id]) {
+              acc[habit.user_id] = { user_id: habit.user_id, co2_saved: 0, profiles: habit.profiles };
+            }
+            acc[habit.user_id].co2_saved += parseFloat(habit.co2_saved || 0);
+            return acc;
+          }, {});
+
+          leaderboardData = Object.values(weeklyStats);
+        }
+      } else if (leaderboardFilter === 'This Month') {
+        const monthStart = getStartOfMonth();
+
+        const { data: monthlyData } = await supabase
+          .from('user_habits')
+          .select(`user_id, co2_saved, profiles!inner ( display_name, email )`)
+          .gte('logged_at', monthStart.toISOString());
+
+        if (monthlyData) {
+          const monthlyStats = monthlyData.reduce((acc, habit) => {
+            if (!acc[habit.user_id]) {
+              acc[habit.user_id] = { user_id: habit.user_id, co2_saved: 0, profiles: habit.profiles };
+            }
+            acc[habit.user_id].co2_saved += parseFloat(habit.co2_saved || 0);
+            return acc;
+          }, {});
+
+          leaderboardData = Object.values(monthlyStats);
+        }
+      } else {
+        const { data } = await supabase
+          .from('user_stats')
+          .select(`user_id, total_co2_saved, profiles!inner ( display_name, email )`)
+          .order('total_co2_saved', { ascending: false })
+          .limit(10);
+
+        if (data) {
+          leaderboardData = data.map((item) => ({
+            user_id: item.user_id,
+            co2_saved: parseFloat(item.total_co2_saved || 0),
+            profiles: item.profiles
+          }));
+        }
       }
 
-      // Fetch recent activity
+      if (leaderboardData.length > 0) {
+        const sorted = leaderboardData
+          .sort((a, b) => b.co2_saved - a.co2_saved)
+          .slice(0, 10)
+          .map((item, index) => ({
+            rank: index + 1,
+            name: item.profiles.display_name || item.profiles.email?.split('@')[0] || 'Anonymous',
+            co2Saved: item.co2_saved,
+            points: Math.floor(item.co2_saved * 10), // unified system
+            streak: 0, // optional, you can add real streaks later
+            isCurrentUser: item.user_id === user?.id
+          }));
+
+        setLeaderboard(sorted);
+      }
+
+      // --- Recent Activity ---
       const { data: activityData } = await supabase
         .from('user_habits')
-        .select(`
-          *,
-          profiles!inner (
-            display_name,
-            email
-          ),
-          habits (
-            title,
-            icon
-          )
-        `)
+        .select(`*, profiles!inner ( display_name, email ), habits ( title, icon )`)
         .order('created_at', { ascending: false })
         .limit(5);
 
@@ -103,7 +156,7 @@ const Community = () => {
 
   useEffect(() => {
     fetchCommunityData();
-  }, [user]);
+  }, [user, leaderboardFilter]);
 
   if (loading) {
     return (
@@ -129,9 +182,7 @@ const Community = () => {
         <div className="inline-flex items-center justify-center w-16 h-16 bg-eco-purple rounded-full mb-4">
           <Users className="h-8 w-8 text-white" />
         </div>
-        <h1 className="text-3xl font-bold text-foreground mb-2">
-          Community Impact
-        </h1>
+        <h1 className="text-3xl font-bold text-foreground mb-2">Community Impact</h1>
         <p className="text-lg text-muted-foreground">
           Together we're making a difference! See how your sustainability efforts contribute to our collective environmental impact.
         </p>
@@ -319,7 +370,11 @@ const Community = () => {
         </CardContent>
       </Card>
     </div>
+    
   );
 };
 
 export default Community;
+
+
+      
