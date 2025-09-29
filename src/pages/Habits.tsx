@@ -6,6 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 
+
+
 const categories = ['All', 'Transport', 'Food', 'Energy', 'Water', 'Waste', 'Other'];
 
 const habitsData = [
